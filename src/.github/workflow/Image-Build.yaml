@@ -1,0 +1,59 @@
+name: Build AtlantisOS Images
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up build environment
+        run: |
+          sudo apt update
+          sudo apt install -y debootstrap qemu-utils mtools grub-pc-bin squashfs-tools xz-utils wget curl grub-efi-amd64-bin dosfstools mtools e2fsprogs debootstrap systemd-container gnome-shell gnome-session gdm3 gnome-terminal nautilus
+
+      - name: Load build configuration
+        run: |
+          cat > build.conf <<'EOF'
+          # example configuration
+          IMAGE_VERSION=${GITHUB_REF_NAME}
+          SYSTEM_APPS="kvm libvirt virt-manager"  # leave blank if not required.
+          DESKTOP_VARIANTS=("gnome" "kde" "xfce")
+          EOF
+          cat build.conf
+
+      - name: Build bootloader image
+        run: |
+          bash src/scripts/build-boot.sh
+      - name: Build system image
+        run: |
+          bash src/scripts/build-system.sh build.conf
+
+      - name: Build desktop images
+        run: |
+          for desktop in gnome kde xfce; do
+            bash src/scripts/build-desktop.sh $desktop build.conf
+          done
+
+      - name: Create checksums
+        run: |
+          mkdir artifacts
+          mv *.img artifacts/
+          cd artifacts
+          sha256sum * > SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "AtlantisOS ${{ github.ref_name }}"
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
