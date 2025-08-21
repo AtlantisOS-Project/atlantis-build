@@ -1,4 +1,5 @@
 #!/bin/bash
+# build-desktop.sh
 # build script to create desktop_name-of-desktop.img for Atlantis OS
 # overlay image, for some typs of desktop based on the Ubuntu Versions
 set -e
@@ -11,15 +12,15 @@ IMG_SIZE="2048M"
 # define the desktop and apps
 # I will probably remove the additional app stores and flatpak
 declare -A DESKTOPS=(
-    [gnome]="ubuntu-desktop gnome-shell gdm3 gnome-software-plugin-snap gnome-software-plugin-flatpak evince gnome-disk-utility"
-    [kde]="kubuntu-desktop plasma-desktop sddm plasma-discover okular plasma-discover-backend-snap plasma-discover-backend-flatpak"
+    [gnome]="ubuntu-desktop gnome-shell gdm3 evince gnome-disk-utility"
+    [kde]="kubuntu-desktop plasma-desktop sddm okular"
     [xfce]="xubuntu-desktop xfce4 lightdm synaptic evince"
-    [lxqt]="lxqt sddm synaptic"
-    [mate]="ubuntu-mate-desktop mate-desktop-environment lightdm synaptic atril"
+    [lxqt]="lxqt sddm"
+    [mate]="ubuntu-mate-desktop mate-desktop-environment lightdm atril"
 )
 
 # extra apps
-EXTRA_APPS="libreoffice vlc"
+EXTRA_APPS="vlc"
 
 mkdir -p "$WORK_DIR"
 
@@ -30,55 +31,50 @@ else
 fi
 
 # check for system.img
+echo "[INFO] Checking for the system.img..."
 if [ ! -f "$SYSTEM_IMG" ]; then
-    echo "Error: $SYSTEM_IMG not found!"
+    echo "[ERROR] $SYSTEM_IMG not found!"
     exit 1
 fi
 
+echo "[INFO] Creating desktop.img..."
 for desktop in "${BUILD_LIST[@]}"; do
     if [[ -z "${DESKTOPS[$desktop]}" ]]; then
-        echo "Desktop ‘$desktop’ not defined. Skip..."
+        echo "[INFO] Desktop ‘$desktop’ not defined. Skip..."
         continue
     fi
 
-    echo "=== Build Desktop: $desktop ==="
+    echo "[INFO] Building desktop: $desktop"
 	
 	# working dirs
     LOWER_DIR="$WORK_DIR/lower"
     UPPER_DIR="$WORK_DIR/upper_$desktop"
     WORK_DIR_OVL="$WORK_DIR/work_$desktop"
     MERGE_DIR="$WORK_DIR/merged"
-
+	
+	echo "[INFO] Creating working directories..."
     mkdir -p "$LOWER_DIR" "$UPPER_DIR" "$WORK_DIR_OVL" "$MERGE_DIR"
 	
+	echo "[INFO] Mounting base image..."
 	# mount the base image
     sudo mount -o loop,ro "$SYSTEM_IMG" "$LOWER_DIR"
 	# mount and overlay structure
+	echo "[INFO] Creating overlay structure..."
     sudo mount -t overlay overlay \
         -o lowerdir="$LOWER_DIR",upperdir="$UPPER_DIR",workdir="$WORK_DIR_OVL" \
         "$MERGE_DIR"
 	
 	# add mount binds
+	echo "[INFO] Adding mount binds..."
     sudo mount --bind /dev "$MERGE_DIR/dev"
     sudo mount --bind /proc "$MERGE_DIR/proc"
     sudo mount --bind /sys "$MERGE_DIR/sys"
 	
 	# install all packages
-    echo "Install packages for $desktop ..."
+    echo "[INFO] Install packages for $desktop ..."
     sudo chroot "$MERGE_DIR" bash -c "
         export DEBIAN_FRONTEND=noninteractive
         apt update
-        apt install -y ${DESKTOPS[$desktop]} $EXTRA_APPS snapd flatpak apparmor
-
-        # add flathub
-        flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-
-        # start snap services
-        systemctl enable snapd
-        systemctl enable apparmor
-
-        # install firefox as snap
-        snap install firefox
 
         # enable display service
         if [[ ${DESKTOPS[$desktop]} == *gdm3* ]]; then
@@ -90,13 +86,14 @@ for desktop in "${BUILD_LIST[@]}"; do
         fi
     "
 	# unmount
+	echo "[INFO] Unmounting everything..."
     sudo umount "$MERGE_DIR/dev" "$MERGE_DIR/proc" "$MERGE_DIR/sys"
     sudo umount "$MERGE_DIR"
     sudo umount "$LOWER_DIR"
 	
 	# create the desktop.img
     DESKTOP_IMG="desktop_${desktop}.img"
-    echo "Create image file $DESKTOP_IMG ..."
+    echo "[INFO] Create image file $DESKTOP_IMG ..."
     dd if=/dev/zero of="$DESKTOP_IMG" bs=1M count=$(( ${IMG_SIZE//M/} ))
     mkfs.ext4 "$DESKTOP_IMG"
 	
@@ -108,9 +105,9 @@ for desktop in "${BUILD_LIST[@]}"; do
     sudo umount "$TMP_MNT"
 	
 	# cleanup
-    echo "Finished: $DESKTOP_IMG"
+    echo "[OK] Finished: $DESKTOP_IMG"
     rm -rf "$UPPER_DIR" "$WORK_DIR_OVL"
 done
 
-echo "All desktop images built!"
+echo "[OK] All desktop images built!"
 
