@@ -47,7 +47,7 @@ apt install -y \
     mesa-utils mesa-utils-extra libgl1-mesa-dri libglx-mesa0 \
     libwayland-client0 libwayland-server0 libwayland-egl1 \
     pipewire pipewire-pulse alsa-utils p7zip-full unrar zip unzip tar \
-    cups system-config-printer bluez blueman systemd-container
+    cups system-config-printer bluez blueman systemd-container chroot
 "
 
 # install GRUB on the system (for emergency startup from USB/ISO)
